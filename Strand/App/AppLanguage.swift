@@ -1,70 +1,80 @@
-import Foundation
+import SwiftUI
 
-/// The language NOOP uses for app-owned copy. Region-specific measurement and clock preferences remain
-/// separate: this changes words, not the user's unit-system choice or time zone.
-///
-/// Apple chooses a bundle's localization once, when the process launches. `apply(_:)` therefore writes
-/// the standard `AppleLanguages` override and Settings tells the user to reopen NOOP. Applying only a
-/// SwiftUI `locale` live would be incorrect: `Text` would switch immediately while `String(localized:)`
-/// messages, notifications, and strings owned by `StrandDesign.module` stayed in the old language.
-enum AppLanguage: String, CaseIterable, Identifiable {
-    case system
+/// Supported languages in the application
+public enum AppLanguage: String, CaseIterable, Identifiable, Codable {
     case english = "en"
-    case german = "de"
-    case spanish = "es"
-    case french = "fr"
-    case italian = "it"
-    case portuguese = "pt-PT"
-    case polish = "pl"
-    case chinese = "zh"
     case kurdishSorani = "ckb"
-
-    static let storageKey = "noop.appLanguage"
-
-    var id: String { rawValue }
-
-    /// Language names are autonyms on purpose, so the picker remains understandable while changing from
-    /// an unfamiliar language. The system choice is localized at its call site.
-    var autonym: String {
+    
+    public var id: String { rawValue }
+    
+    /// Autonym / Display Name in its native script
+    public var autonym: String {
         switch self {
-        case .system:     return ""
-        case .english:    return "English"
-        case .german:     return "Deutsch"
-        case .spanish:    return "Español"
-        case .french:     return "Français"
-        case .italian:    return "Italiano"
-        case .portuguese: return "Português"
-        case .polish:     return "Polski"
-        case .chinese:    return "中文"
-        case .kurdishSorani: return "کوردی (سۆرانی)"
+        case .english:
+            return "English"
+        case .kurdishSorani:
+            return "کوردی (سۆرانی)"
         }
     }
-
-    static func resolve(_ raw: String) -> AppLanguage {
-        AppLanguage(rawValue: raw) ?? .system
+    
+    /// Locale identifier associated with the selection
+    public var locale: Locale {
+        switch self {
+        case .english:
+            return Locale(identifier: "en_US")
+        case .kurdishSorani:
+            return Locale(identifier: "ckb_IQ")
+        }
     }
+    
+    /// Layout Direction helper
+    public var layoutDirection: LayoutDirection {
+        switch self {
+        case .english:
+            return .leftToRight
+        case .kurdishSorani:
+            return .rightToLeft
+        }
+    }
+}
 
-    /// Persist the bundle-language override. Foundation observes it on the next process launch.
-    static func apply(_ raw: String, defaults: UserDefaults = .standard) {
-        let language = resolve(raw)
-        if language == .system {
-            defaults.removeObject(forKey: "AppleLanguages")
+/// Dynamic Localization Manager managing active locale & UI semantic layout
+public final class LocalizationManager: ObservableObject {
+    public static let shared = LocalizationManager()
+    
+    @AppStorage("selected_app_language") public var currentLanguage: AppLanguage = .english {
+        didSet {
+            applyLanguageSettings()
+        }
+    }
+    
+    private init() {
+        applyLanguageSettings()
+    }
+    
+    public func applyLanguageSettings() {
+        UserDefaults.standard.set([currentLanguage.rawValue], forKey: "AppleLanguages")
+        UserDefaults.standard.synchronize()
+        
+        if currentLanguage == .kurdishSorani {
+            UIView.appearance().semanticContentAttribute = .forceLeftToRight
         } else {
-            defaults.set([language.rawValue], forKey: "AppleLanguages")
+            UIView.appearance().semanticContentAttribute = .unspecified
         }
     }
-
-    /// Locale used by SwiftUI format styles for the language that the currently-running bundles chose.
-    /// This deliberately follows `Bundle`, not the pending picker value, so changing the setting cannot
-    /// produce a half-new/half-old UI before the requested reopen.
-    static var activeLocale: Locale {
-        let bundleLanguage = Bundle.main.preferredLocalizations.first ?? "en"
-        let language = bundleLanguage.split(separator: "-").first.map(String.init) ?? bundleLanguage
-        // Preserve the device's regional conventions (24-hour clock, date order, decimal separator) while
-        // taking month/weekday words from the app language: English on a German device becomes `en_DE`.
-        if let region = Locale.autoupdatingCurrent.region?.identifier {
-            return Locale(identifier: "\(language)_\(region)")
-        }
-        return Locale(identifier: language)
+    
+    public func formatNumber(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = currentLanguage.locale
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+    
+    public func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = currentLanguage.locale
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 }
