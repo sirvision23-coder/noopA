@@ -47,7 +47,7 @@ enum Platform {
     /// "iPhone" on iOS, "Mac" on macOS. e.g. "Everything stays on your \(Platform.deviceNoun)."
     static var deviceNoun: String {
         #if os(iOS)
-        return "iPhone"
+        return String(localized: "iPhone")
         #else
         return "Mac"
         #endif
